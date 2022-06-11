@@ -14,6 +14,8 @@ import time
 from sklearn import preprocessing
 from scipy.signal import butter, lfilter
 import xgboost as xgb
+import os
+os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
 
 ##
 # Transfers one column label to one hot label
