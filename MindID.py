@@ -7,7 +7,6 @@
 # TAO GU, KAIXUAN CHEN
 
 ## Using ipython with vim for main env, hence double #'s to seperate cells
-
 import tensorflow as tf
 import scipy.io as sc
 import numpy as np
@@ -23,7 +22,7 @@ def one_hot(y_):
     # e.g.: [[5], [0], [3]] --> [[0, 0, 0, 0, 0, 1], [1, 0, 0, 0, 0, 0], [0, 0, 0, 1, 0, 0]]
     y_ = y_.reshape(len(y_))
     n_values = np.max(y_) + 1
-    return np.eye(n_values)[np.array(y_, dtype=np.int32)]
+    return np.eye(int(n_values))[np.array(y_, dtype=np.int32)]
 
 def butter_bandpass(lowcut, highcut, fs, order=5):
     nyq = 0.5 * fs
@@ -164,13 +163,9 @@ print(label_testing)
 label_testing = one_hot(label_testing)
 
 ##
-# batch split
-
+# Batch splitting of the training data for RNN Architecture
 a = feature_training
 b = feature_testing
-nodes = 30
-lameda = 0.001
-lr = 0.001
 
 batch_size = int(data_size*0.125)
 train_fea = []
@@ -180,61 +175,70 @@ for i in range(n_group):
     train_fea.append(f)
 print(train_fea[0].shape)
 print(train_fea[0][235:237])
-# exit(0)
+
 train_label = []
 for i in range(n_group):
     f = label_training[(0+batch_size*i):(batch_size+batch_size*i), :]
     train_label.append(f)
 print(train_label[0].shape)
 
+##
 
-# hyperparameters
-n_inputs = n_fea  # MNIST data input (img shape: 11*99)
-# n_steps =  # time steps
-n_hidden1_units = nodes   # neurons in hidden layer
+# Hyperparameters:
+nodes = 30
+lameda = 0.001
+lr = 0.001
+bias_init = 0.1
+
+# Number of EEG data channels
+n_inputs = n_fea
+
+# Neurons in hidden layer
+n_hidden1_units = nodes
 n_hidden2_units = nodes
 n_hidden3_units = nodes
-n_hidden4_units=nodes
-n_classes = 8  # MNIST classes (0-9 digits)
+n_hidden4_units = nodes
 
-# tf Graph input
+# Number of participants
+n_classes = 8
 
-x = tf.placeholder(tf.float32, [None, n_steps, n_inputs],name="x")
-# x = tf.placeholder(tf.float32, [None, n_steps, n_inputs], name="features")
-y = tf.placeholder(tf.float32, [None, n_classes])
+# tf Graph input (Current work around atm)
+tf.compat.v1.disable_eager_execution()
+x = tf.compat.v1.placeholder(tf.float32, [None, n_steps, n_inputs],name="x")
+y = tf.compat.v1.placeholder(tf.float32, [None, n_classes])
 
-# Define weights
-
+# Define initial weights from normal distribution
 weights = {
-'in': tf.Variable(tf.random_normal([n_inputs, n_hidden1_units]), trainable=True),
-'a': tf.Variable(tf.random_normal([n_hidden1_units, n_hidden1_units]), trainable=True),
+'in': tf.Variable(tf.random.normal([n_inputs, n_hidden1_units]), trainable=True),
+'a': tf.Variable(tf.random.normal([n_hidden1_units, n_hidden1_units]), trainable=True),
 
-'hidd2': tf.Variable(tf.random_normal([n_hidden1_units, n_hidden2_units])),
-'hidd3': tf.Variable(tf.random_normal([n_hidden2_units, n_hidden3_units])),
-'hidd4': tf.Variable(tf.random_normal([n_hidden3_units, n_hidden4_units])),
+'hidd2': tf.Variable(tf.random.normal([n_hidden1_units, n_hidden2_units])),
+'hidd3': tf.Variable(tf.random.normal([n_hidden2_units, n_hidden3_units])),
+'hidd4': tf.Variable(tf.random.normal([n_hidden3_units, n_hidden4_units])),
 
-'out': tf.Variable(tf.random_normal([n_hidden4_units, n_classes]), trainable=True),
-'att': tf.Variable(tf.random_normal([n_inputs, n_hidden4_units]), trainable=True),
-'att2': tf.Variable(tf.random_normal([1, batch_size]), trainable=True),
+'out': tf.Variable(tf.random.normal([n_hidden4_units, n_classes]), trainable=True),
+'att': tf.Variable(tf.random.normal([n_inputs, n_hidden4_units]), trainable=True),
+'att2': tf.Variable(tf.random.normal([1, batch_size]), trainable=True),
 
 }
 
+# Define initial RNN layer biases as 'bias_init'
 biases = {
-'in': tf.Variable(tf.constant(0.1, shape=[n_hidden1_units])),
+'in': tf.Variable(tf.constant(bias_init, shape=[n_hidden1_units])),
 
-'hidd2': tf.Variable(tf.constant(0.1, shape=[n_hidden2_units ])),
-'hidd3': tf.Variable(tf.constant(0.1, shape=[n_hidden3_units])),
-'hidd4': tf.Variable(tf.constant(0.1, shape=[n_hidden4_units])),
+'hidd2': tf.Variable(tf.constant(bias_init, shape=[n_hidden2_units ])),
+'hidd3': tf.Variable(tf.constant(bias_init, shape=[n_hidden3_units])),
+'hidd4': tf.Variable(tf.constant(bias_init, shape=[n_hidden4_units])),
 
-'out': tf.Variable(tf.constant(0.1, shape=[n_classes]), trainable=True),
-'att': tf.Variable(tf.constant(0.1, shape=[n_hidden4_units])),
-'att2': tf.Variable(tf.constant(0.1, shape=[n_hidden4_units])),
+'out': tf.Variable(tf.constant(bias_init, shape=[n_classes]), trainable=True),
+'att': tf.Variable(tf.constant(bias_init, shape=[n_hidden4_units])),
+'att2': tf.Variable(tf.constant(bias_init, shape=[n_hidden4_units])),
 }
 
-
+##
+# Function for RNN
 def RNN(X, weights, biases):
     # hidden layer for input to cell
-    ########################################
 
     # transpose the inputs shape from
     # X ==> (128 batch * 28 steps, 28 inputs)
@@ -250,13 +254,12 @@ def RNN(X, weights, biases):
 
 
     # cell
-    ##########################################
 
     # basic LSTM Cell.
-    lstm_cell_1 = tf.contrib.rnn.BasicLSTMCell(n_hidden3_units, forget_bias=1, state_is_tuple=True)
+    lstm_cell_1 = tf.compat.v1.nn.rnn_cell.BasicLSTMCell(n_hidden3_units, forget_bias=1, state_is_tuple=True)
     init_state = lstm_cell_1.zero_state(batch_size, dtype=tf.float32)
 
-    outputs, final_state = tf.nn.dynamic_rnn(lstm_cell_1, X_in, initial_state=init_state, time_major=False)
+    outputs, final_state = tf.compat.v1.nn.dynamic_rnn(lstm_cell_1, X_in, initial_state=init_state, time_major=False)
     print('outp.shape', outputs.get_shape())
 
     # outputs
@@ -271,7 +274,7 @@ def RNN(X, weights, biases):
     return results,outputs[-1]
 
 pred, Feature = RNN(x, weights, biases)
-
+##
 
 lamena = lameda
 l2 = lamena * sum(tf.nn.l2_loss(tf_var) for tf_var in tf.trainable_variables())  # L2 loss prevents this overkill neural network to overfit the data
