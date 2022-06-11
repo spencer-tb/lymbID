@@ -57,7 +57,6 @@ print(label)
 time1 = time.time()
 
 ##
-
 # Fuction to load either EID-M (dataset==0), EID-S (1) or EEG-S (2)
 def load_feature(dataset=1):
     # EID-M, with three trials, 21000 samples per sub
@@ -88,85 +87,83 @@ def load_feature(dataset=1):
             a1 = np.vstack((a1, c))
             #print(i, a1.shape)
             all = a1
-    return all
+    return all, n_fea
 
 # Load EID-S dataset
-all = load_feature(1)
+all, n_fea = load_feature(1)
 print(all)
+print(n_fea)
 time2= time.time()
 
 ##
-
-
+# Perform EEG Delta pattern decomposition
 data_f1=[]
-#  EEG Delta pattern decomposition
 for i in range(all.shape[1]):
     x = all[:, i]
     fs = 128.0
     lowcut =0.5
     highcut = 4.0
-
     y = butter_bandpass_filter(x, lowcut, highcut, fs, order=3)
     data_f1.append(y)
+
 data_f1=np.array(data_f1)
 data_f1=np.transpose(data_f1)
 print('data_f1.shape',data_f1.shape)
 all=data_f1
-time3=time.clock()
-print('PD time',time3-time2)
 
+time3=time.time()
+print('PD time',time3-time2)
 
 all=np.hstack((all,label))
 print(all.shape)
 
-# all=combine_data
+##
+# Remove DC offset from decomp'd data using n_fea
 data_size=all.shape[0]
-
 feature_all = all[:, 0:n_fea]
 print(all[:, n_fea:n_fea+1])
-
-
 feature_all=feature_all-4200 # minus Direct Current
-# z-score scaling
-feature_all=preprocessing.scale(feature_all)
 
-# min-max  unity scaling
-# feature_all=preprocessing.minmax_scale(feature_all,feature_range=(0,1))
-# feature_all=feature_all/sum(feature_all)
+##
+# Fuction to normalise remaining pre-processed EEG data:
+# either z-score (scaling==0), min-max (1) or unity (2)
+def normalise(feature_all, scaling=0):
+    if(scaling==0):
+        # z-score scaling
+        feature_all=preprocessing.scale(feature_all)
+    elif(scaling==1):
+        # min-max
+        feature_all=preprocessing.minmax_scale(feature_all,feature_range=(0,1))
+    else:
+        #unity scaling
+        feature_all=feature_all/sum(feature_all)
+    return feature_all
+
+# Normalise data
+feature_all = normalise(feature_all,0)
 label_all = all[:, n_fea:n_fea+1]
 all = np.hstack((feature_all, label_all))
 print(all.shape)
 
-# use the first subject as testing subject
+##
+# Test/train split 12.5/87.5% of pre-proc'd EEG data
 np.random.shuffle(all)
-
-train_data=all[0:data_size*0.875]  # 1 million samples
-test_data=all[data_size*0.875:data_size]
-
-
-
-no_fea = n_fea
+train_data=all[0:int(data_size*0.875)]
+test_data=all[int(data_size*0.875):data_size]
 n_steps = len_sample
 
-feature_training = train_data[:, 0:no_fea]
-feature_training = feature_training.reshape([train_data.shape[0], n_steps, no_fea])
-
-
-feature_testing = test_data[:,0:no_fea]
-
-feature_testing = feature_testing.reshape([test_data.shape[0], n_steps, no_fea])
-
-
-label_training = train_data[:, no_fea]
+feature_training = train_data[:, 0:n_fea]
+feature_training = feature_training.reshape([train_data.shape[0], n_steps, n_fea])
+label_training = train_data[:, n_fea]
 label_training = one_hot(label_training)
-label_testing = test_data[:, no_fea]
+
+feature_testing = test_data[:,0:n_fea]
+feature_testing = feature_testing.reshape([test_data.shape[0], n_steps, n_fea])
+label_testing = test_data[:, n_fea]
 print(label_testing)
 label_testing = one_hot(label_testing)
 
-
-print(all.shape)
-
-
+##
 # batch split
 
 a = feature_training
@@ -192,7 +189,7 @@ print(train_label[0].shape)
 
 
 # hyperparameters
-n_inputs = no_fea  # MNIST data input (img shape: 11*99)
+n_inputs = n_fea  # MNIST data input (img shape: 11*99)
 # n_steps =  # time steps
 n_hidden1_units = nodes   # neurons in hidden layer
 n_hidden2_units = nodes
